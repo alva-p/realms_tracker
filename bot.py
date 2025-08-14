@@ -5,18 +5,59 @@ import aiohttp
 from sales_listener import check_sales
 from dotenv import load_dotenv
 import os
-from datetime import datetime, timedelta, timezone
 
-# .ENV
+# Cargar .env
 load_dotenv()
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-API_KEY = os.getenv("API_KEY")
+API_KEY = os.getenv("API_KEY")  # API Key Ronin
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME")
 RONIN_API_URL = os.getenv("RONIN_API_URL")
+OPENSEA_API_URL = "https://api.opensea.io/api/v2/events"
+OPENSEA_API_KEY = os.getenv("OPENSEA_API_KEY")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS"))
 FETCH_SIZE = int(os.getenv("FETCH_SIZE"))
+
+# Lista de colecciones a trackear
+COLLECTIONS = [
+    # OpenSea
+    {
+        "name": "Kojins",
+        "contract": os.getenv("CONTRACT_ADDRESS_KOJINS"),
+        "slug": "kojins",
+        "market": "opensea",
+        "last_timestamp": 0
+    },
+    {
+        "name": "Mounts",
+        "contract": os.getenv("CONTRACT_ADDRESS_MOUNTS"),
+        "slug": "realms-mounts",
+        "market": "opensea",
+        "last_timestamp": 0
+    },
+
+    # Ronin (usando mismos contratos que OpenSea)
+    {
+        "name": "Kojins",
+        "contract": os.getenv("CONTRACT_ADDRESS_KOJINS"),
+        "market": "ronin",
+        "last_timestamp": 0
+    },
+    {
+        "name": "Mounts",
+        "contract": os.getenv("CONTRACT_ADDRESS_MOUNTS"),
+        "market": "ronin",
+        "last_timestamp": 0
+    },
+
+    # Ronin colección ROLG
+    {
+        "name": os.getenv("COLLECTION_NAME", "rolg-nft"),
+        "contract": os.getenv("CONTRACT_ADDRESS_ROLG"),
+        "market": "ronin",
+        "last_timestamp": 0
+    }
+]
 
 
 class NFTSalesBot(discord.Client):
@@ -24,15 +65,12 @@ class NFTSalesBot(discord.Client):
         super().__init__(**kwargs)
         self.session: aiohttp.ClientSession | None = None
         self.channel = None
-        self.last_timestamp: int = 0
         self.seen_tx_hashes: set[str] = set()
         self.running = True
         self.bg_task = None
 
     async def setup_hook(self):
-        # Se ejecuta antes de on_ready; ideal para crear la sesión HTTP
         self.session = aiohttp.ClientSession()
-        # Crear tarea de polling
         self.bg_task = asyncio.create_task(self._poll_sales())
 
     async def on_ready(self):
@@ -42,23 +80,41 @@ class NFTSalesBot(discord.Client):
             print(f"[ERROR] No se encontró el canal con ID {CHANNEL_ID}")
             await self.close()
             return
-        await self.channel.send("✅ **Bot de seguimiento de ventas de NFTs iniciado!**")
+        await self.channel.send("✅ **Bot  initiated**")
 
     async def _poll_sales(self):
-        # Esperar a que esté listo y el canal asignado
         await self.wait_until_ready()
         while not self.is_closed() and self.running:
             try:
-                new_ts = await check_sales(
-                    self.session, self.channel, RONIN_API_URL, API_KEY,
-                    self.last_timestamp, COLLECTION_NAME, CONTRACT_ADDRESS,
-                    FETCH_SIZE, self.seen_tx_hashes
-                )
-                if new_ts > self.last_timestamp:
-                    self.last_timestamp = new_ts
-                    print(f"[INFO] last_timestamp actualizado a {self.last_timestamp}")
+                for collection in COLLECTIONS:
+                    api_url = (
+                        RONIN_API_URL
+                        if collection["market"] == "ronin"
+                        else f"{OPENSEA_API_URL}?collection_slug={collection['slug']}"
+                    )
+                    api_key = API_KEY if collection["market"] == "ronin" else OPENSEA_API_KEY
+
+                    print(f"[DEBUG] Consultando {collection['name']} en {collection['market']}")
+                    new_ts = await check_sales(
+                        self.session,
+                        self.channel,
+                        api_url,
+                        api_key,
+                        collection["last_timestamp"],
+                        collection["name"],
+                        collection["contract"] if collection["market"] == "ronin" else collection["slug"],
+                        FETCH_SIZE,
+                        self.seen_tx_hashes,
+                        collection["market"]
+                    )
+                    if new_ts > collection["last_timestamp"]:
+                        collection["last_timestamp"] = new_ts
+                        print(f"[INFO] last_timestamp actualizado a {new_ts} para {collection['name']}")
+                    else:
+                        print(f"[DEBUG] No se encontraron nuevas ventas para {collection['name']}")
             except Exception as e:
                 print(f"[ERROR] Ciclo de polling: {e}")
+
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
     async def close(self):
@@ -69,8 +125,7 @@ class NFTSalesBot(discord.Client):
             await self.session.close()
         await super().close()
 
+
 intents = discord.Intents.default()
 client = NFTSalesBot(intents=intents)
 client.run(DISCORD_TOKEN)
-
-

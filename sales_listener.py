@@ -1,45 +1,74 @@
 # sales_listener.py
 import discord
 from decimal import Decimal
-from query import fetch_recent_sales
+from query import fetch_recent_sales, fetch_opensea_sales
 
 def _format_price_ron(value):
     """
-    La mayoría de endpoints devuelven realPrice con 18 decimales (wei).
-    Si tu endpoint usa otra unidad, ajustá este formateo.
+    Formatea realPrice asumiendo 18 decimales (wei-like).
     """
     try:
         ron = Decimal(str(value)) / Decimal(10**18)
-        # quitar ceros sobrantes
-        ron = ron.normalize()
+        ron = ron.quantize(Decimal("0.0001"))  # 4 decimales fijos
         return f"{ron} RON"
     except Exception:
         return str(value)
 
-async def notify_sale(channel: discord.abc.Messageable, sale: dict, collection_name: str):
-    token = sale["assets"][0]["token"] if sale.get("assets") else {}
-    token_id = token.get("tokenIdNum") or token.get("tokenIdStr") or "¿?"
-    name = token.get("name") or f"Token #{token_id}"
-    image = token.get("image")
+def _format_price_eth(value):
+    """
+    Formatea precios en ETH (18 decimales).
+    """
+    try:
+        eth = Decimal(str(value)) / Decimal(10**18)
+        eth = eth.quantize(Decimal("0.0001"))
+        return f"{eth} ETH"
+    except Exception:
+        return str(value)
 
-    price_str = _format_price_ron(sale.get("realPrice"))
-    buyer = sale.get("matcher", "¿?")
-    seller = sale.get("maker", "¿?")
-    tx = sale.get("txHash", "")
+async def notify_sale(channel: discord.abc.Messageable, sale: dict, collection_name: str, market: str, contract_address: str = None):
+    assets = sale.get("assets", [])
+    token = assets[0].get("token") if assets else {}
+    typename = token.get("__typename") if token else "unknown"
+    token_id = token.get("tokenId1155") if typename == "Erc1155" else token.get("tokenId721") if typename == "Erc721" else sale.get("tokenId", "¿?")
+    name = token.get("name") or f"Token #{token_id}"
+
+    # Imagen: primero la de Ronin, si no hay usa la de OpenSea o placeholder
+    image = token.get("image") if token else ""
+    if not image:
+        image = assets[0].get("image_url", "")
+    if not image:
+        image = "https://via.placeholder.com/256?text=NFT"
+
+    # Precio
+    price_str = _format_price_ron(sale.get("realPrice")) if market == "ronin" else _format_price_eth(sale.get("price"))
+    buyer = sale.get("matcher", sale.get("buyer", "¿?"))
+    seller = sale.get("maker", sale.get("seller", "¿?"))
+    tx_hash = sale.get("txHash")
+
+    # URL: Transacción en vez de NFT
+    if market == "ronin" and tx_hash:
+        url = f"https://app.roninchain.com/tx/{tx_hash}"
+    elif market == "opensea" and tx_hash:
+        url = f"https://etherscan.io/tx/{tx_hash}"
+    else:
+        url = discord.Embed.Empty
 
     embed = discord.Embed(
-        title=f"Venta en {collection_name}",
+        title=f"Sale in {collection_name} ({market.capitalize()})",
         description=f"**{name}** (ID: `{token_id}`)",
-        url=f"https://app.roninchain.com/tx/{tx}" if tx else discord.Embed.Empty,
+        url=url
     )
-    embed.add_field(name="Precio", value=price_str, inline=True)
-    embed.add_field(name="Comprador", value=f"`{buyer}`", inline=False)
-    embed.add_field(name="Vendedor", value=f"`{seller}`", inline=False)
+    embed.add_field(name="Sold for", value=price_str, inline=True)
+    embed.add_field(name="Buyer", value=f"`{buyer}`", inline=False)
+    embed.add_field(name="Seller", value=f"`{seller}`", inline=False)
+
     if image:
         embed.set_thumbnail(url=image)
-    embed.set_footer(text="Ronin • Notificador de ventas")
+
+    embed.set_footer(text=f"{market.capitalize()} • Sales notifier")
 
     await channel.send(embed=embed)
+
 
 async def check_sales(
     session,
@@ -48,18 +77,17 @@ async def check_sales(
     api_key,
     last_timestamp: int,
     collection_name: str,
-    contract_address: str,
+    contract_or_slug: str,
     fetch_size: int,
     seen_tx_hashes: set,
+    market: str = "ronin",
 ):
     """
-    1) Pide ventas recientes del contrato.
-    2) Se queda solo con las que son posteriores a last_timestamp
-       (y también deduplica por txHash en caso de empates de timestamp).
-    3) Notifica en orden cronológico y devuelve el último timestamp visto.
+    Pide ventas recientes y notifica las nuevas.
     """
-    sales = await fetch_recent_sales(session, api_url, api_key, contract_address, size=fetch_size)
-    # Filtrar nuevas (timestamp > last_timestamp) o iguales pero tx no visto
+    sales = await fetch_recent_sales(session, api_url, api_key, contract_or_slug, size=fetch_size) if market == "ronin" else await fetch_opensea_sales(session, api_url, api_key, contract_or_slug, last_timestamp)
+    print(f"[INFO] Revisando {collection_name} en {market} - {len(sales)} ventas encontradas")
+
     new_sales = []
     for s in sales:
         ts = int(s.get("timestamp", 0))
@@ -70,17 +98,13 @@ async def check_sales(
     if not new_sales:
         return last_timestamp
 
-    # Ordenar para notificar en orden
     new_sales.sort(key=lambda x: (int(x.get("timestamp", 0)), x.get("txHash") or ""))
-
     for s in new_sales:
-        await notify_sale(channel, s, collection_name)
+        await notify_sale(channel, s, collection_name, market, contract_or_slug)
         tx = s.get("txHash")
         if tx:
             seen_tx_hashes.add(tx)
-            # Limpiar set si crece mucho
             if len(seen_tx_hashes) > 2000:
-                # descartar arbitrariamente algunos para no crecer sin límite
                 for _ in range(len(seen_tx_hashes) - 1500):
                     seen_tx_hashes.pop()
 

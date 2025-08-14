@@ -10,12 +10,12 @@ async def fetch_recent_sales(session, api_url, api_key, contract_address, size=1
             token {
               __typename
               ... on Erc1155 {
-                tokenIdNum: tokenId
+                tokenId1155: tokenId
                 name
                 image
               }
               ... on Erc721 {
-                tokenIdStr: tokenId
+                tokenId721: tokenId
                 name
                 image
               }
@@ -44,3 +44,23 @@ async def fetch_recent_sales(session, api_url, api_key, contract_address, size=1
     if "errors" in data:
         raise RuntimeError(f"GraphQL errors: {data['errors']}")
     return data["data"]["recentlySolds"]["results"]
+
+async def fetch_opensea_sales(session, api_url, api_key, slug_or_contract, last_checked):
+    headers = {"X-API-KEY": api_key}
+    params = {"event_type": "sale", "occurred_after": int(last_checked), "collection_slug": slug_or_contract}
+    async with session.get(api_url, headers=headers, params=params) as r:
+        if r.status != 200:
+            body = await r.text()
+            raise RuntimeError(f"OpenSea HTTP {r.status}: {body}")
+        data = await r.json()
+    return [
+        {
+            "tokenId": event["nft"]["identifier"],
+            "price": float(event["payment"]["quantity"]) / 10**18,
+            "maker": event.get("from_account", {}).get("address", "¿?"),
+            "matcher": event.get("to_account", {}).get("address", "¿?"),
+            "timestamp": event["event_timestamp"],
+            "txHash": event.get("transaction_hash", ""),
+            "image": event.get("nft", {}).get("image_url")
+        } for event in data.get("events", [])
+    ]
