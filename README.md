@@ -4,9 +4,10 @@ A Python-based bot for tracking **NFT sales and events** in the Realms ecosystem
 
 ---
 
-## 📌 Project Overview
 
-Monitors NFT marketplaces for the Realms project on **Ronin chain**.
+![Realms Tracker logo](images/image.png)
+
+## 📌 Project Overview
 
 **Features:**
 - Automated polling of Ronin/OpenSea APIs (configurable interval).
