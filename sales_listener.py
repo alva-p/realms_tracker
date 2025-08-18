@@ -44,6 +44,27 @@ async def notify_sale(channel: discord.abc.Messageable, sale: dict, collection_n
     buyer = sale.get("matcher", sale.get("buyer", "¿?"))
     seller = sale.get("maker", sale.get("seller", "¿?"))
     tx_hash = sale.get("txHash")
+    assets = sale.get("assets", [])
+    quantity = 1
+    if assets:
+        token = assets[0].get("token", {})
+        typename = token.get("__typename", "")
+    if typename == "Erc1155":
+        quantity = int(assets[0].get("quantity", 1))
+
+    # Precio total (realPrice ya viene en WEI o base units)
+    if market == "ronin":
+        total_price = int(sale.get("realPrice", 0))
+        unit_price = total_price // quantity if quantity > 0 else total_price
+        price_total_str = _format_price_ron(total_price)   # ejemplo: "55.0000 RON"
+        price_unit_str = _format_price_ron(unit_price)     # ejemplo: "0.5500 RON"
+    else:
+        total_price = int(sale.get("price", 0))
+        unit_price = total_price // quantity if quantity > 0 else total_price
+        price_total_str = _format_price_eth(total_price)
+        price_unit_str = _format_price_eth(unit_price)
+
+
 
     # URL: Transacción en vez de NFT
     if market == "ronin" and tx_hash:
@@ -58,9 +79,17 @@ async def notify_sale(channel: discord.abc.Messageable, sale: dict, collection_n
         description=f"**{name}** (ID: `{token_id}`)",
         url=url
     )
-    embed.add_field(name="Sold for", value=price_str, inline=True)
+
+    if quantity > 1:
+        embed.add_field(name="Sold for", value=f"{quantity} × {price_unit_str} = {price_total_str}", inline=True)
+    else:
+        embed.add_field(name="Sold for", value=price_total_str, inline=True)
+
+    embed.add_field(name="Quantity", value=str(quantity), inline=True)
     embed.add_field(name="Buyer", value=f"`{buyer}`", inline=False)
     embed.add_field(name="Seller", value=f"`{seller}`", inline=False)
+
+   
 
     if image:
         embed.set_thumbnail(url=image)

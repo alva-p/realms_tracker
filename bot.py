@@ -50,13 +50,12 @@ COLLECTIONS = [
         "last_timestamp": 0
     },
 
-    # Ronin colección ROLG
-    #{
-     #   "name": os.getenv("COLLECTION_NAME", "rolg-nft"),
-      #  "contract": os.getenv("CONTRACT_ADDRESS_ROLG"),
-       # "market": "ronin",
-        #"last_timestamp": 0
-    #}
+    {
+        "name": os.getenv("COLLECTION_NAME"),
+        "contract": os.getenv("CONTRACT_ADDRESS_TICKETS"),
+        "market": "ronin",
+        "last_timestamp": 0
+    }
 ]
 
 

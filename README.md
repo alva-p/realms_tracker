@@ -5,7 +5,7 @@ A Python-based bot for tracking **NFT sales and events** in the Realms ecosystem
 ---
 
 
-![Realms Tracker logo](images/image.png)
+![Realms Tracker logo](images/image.png) !(images/image2.png)
 
 ## 📌 Project Overview
 

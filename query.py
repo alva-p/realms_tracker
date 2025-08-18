@@ -20,6 +20,7 @@ async def fetch_recent_sales(session, api_url, api_key, contract_address, size=1
                 image
               }
             }
+            quantity
           }
           maker
           matcher
