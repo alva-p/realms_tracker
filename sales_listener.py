@@ -45,12 +45,23 @@ async def notify_sale(channel: discord.abc.Messageable, sale: dict, collection_n
     seller = sale.get("maker", sale.get("seller", "¿?"))
     tx_hash = sale.get("txHash")
     assets = sale.get("assets", [])
-    quantity = 1
-    if assets:
-        token = assets[0].get("token", {})
-        typename = token.get("__typename", "")
-    if typename == "Erc1155":
-        quantity = int(assets[0].get("quantity", 1))
+    
+# ✅ Cantidad y precios
+    if market == "ronin":
+        total_price = int(sale.get("realPrice", 0))  # precio total en base units
+        unit_price = int(sale.get("price", total_price))  # precio unitario en base units
+        quantity = total_price // unit_price if unit_price > 0 else 1
+
+        price_total_str = _format_price_ron(total_price)   # ejemplo: "4.9000 RON"
+        price_unit_str = _format_price_ron(unit_price)     # ejemplo: "0.4900 RON"
+    else:
+        total_price = int(sale.get("price", 0))
+        quantity = int(sale.get("quantity", 1))  # en opensea sí viene quantity
+        unit_price = total_price // quantity if quantity > 0 else total_price
+
+        price_total_str = _format_price_eth(total_price)
+        price_unit_str = _format_price_eth(unit_price)
+
 
     # Precio total (realPrice ya viene en WEI o base units)
     if market == "ronin":
