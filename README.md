@@ -156,15 +156,6 @@ Editar
 git clone https://github.com/alva-p/realms_tracker.git
 bash
 
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-
 ## 🔗 Resources
 
 - 🌐 [Realms Official Site](https://realms.game/)
@@ -185,6 +176,6 @@ Contributions welcome! Open an issue or PR.
 ---
 
 <div align="center">
-	<strong>✨ P.S. ¡shout out to <span style="color:#e63946;">Berlin</span>! ✨</strong>
+	<strong> P.S. ¡shout out to <span style="color:#e63946;">Berlin </span>! </strong>
 >>>>>>> 3c4d737 (update readme)
 </div>
