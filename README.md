@@ -1,7 +1,7 @@
 <<<<<<< HEAD
 # 🐉 Realms Tracker
 
-A Python-based bot for tracking **NFT sales and events** in the Realms ecosystem, focusing on **Kojins** and **Mounts** collections (with plans to expand to more NFTs).
+A Python-based bot for tracking **NFT sales and events** in the Realms ecosystem, focusing on **Kojins**, **Mounts** and **Tickets** collections.
 
 ---
 
